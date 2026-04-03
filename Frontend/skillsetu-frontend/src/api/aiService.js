@@ -7,13 +7,16 @@ const RESUME_PARSE_ENDPOINT = `${API_BASE_URL}/api/resume/parse`;
 
 // ================= LANGUAGE FIX =================
 const mapLanguage = (language) => {
-  if (!language) return "en";
   const langMap = {
     English: "en",
     Hindi: "hi",
-    Hinglish: "Hinglish", // Let the backend handle the STT/TTS routing!
+    Hinglish: "Hinglish", // 🔥 FIX: Capitalized for Python backend
+    Tamil: "ta",
+    Telugu: "te",
+    Bengali: "bn",
   };
-  return langMap[language] || language;
+
+  return langMap[language] || "en";
 };
 
 // ------------------------------------------------------------------
@@ -52,13 +55,15 @@ export const startInterviewSession = async (skill, language) => {
 // ------------------------------------------------------------------
 // 2. SEND AUDIO TO AI
 // ------------------------------------------------------------------
-export const sendAudioToAI = async (audioBlob, sessionId) => {
+// 🔥 FIX: Added 'language' parameter
+export const sendAudioToAI = async (audioBlob, sessionId, language = "English") => {
   try {
     const formData = new FormData();
     const extension = audioBlob?.type?.includes("mp4") ? "m4a" : "webm";
 
     formData.append("audio", audioBlob, `audio.${extension}`);
     formData.append("session_id", sessionId);
+    formData.append("language", mapLanguage(language)); 
 
     const response = await fetch(ASSESS_VOICE_ENDPOINT, {
       method: "POST",
@@ -250,6 +255,7 @@ export const saveInterviewResult = async (payload) => {
     return await response.json();
   } catch (error) {
     console.error("Save result error:", error);
+    return null; // 🔥 FIX: Prevents silent failures in the UI
   }
 };
 
@@ -267,6 +273,26 @@ export const getUserSkills = async (userId) => {
     return await res.json();
   } catch (error) {
     console.error("Skills error:", error);
+    return null;
+  }
+};
+
+// ------------------------------------------------------------------
+// 10. UPDATE USER PROFILE (NEW - Abstracted from UI)
+// ------------------------------------------------------------------
+export const updateUserProfile = async (payload) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/user/update`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) throw new Error("Failed to update user");
+    
+    return await response.json();
+  } catch (error) {
+    console.error("User update error:", error);
     return null;
   }
 };

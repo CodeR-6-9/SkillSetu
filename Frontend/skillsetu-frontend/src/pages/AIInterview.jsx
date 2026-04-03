@@ -12,9 +12,8 @@ import {
   Flag,
 } from "lucide-react";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
-import { sendAudioToAI, getInterviewSummary } from "../api/aiService";
+import { sendAudioToAI, getInterviewSummary, updateUserProfile } from "../api/aiService"; 
 import { useAuth, useUser } from "@clerk/clerk-react";
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, '');
 
 export default function AIInterview() {
   const navigate = useNavigate();
@@ -62,6 +61,8 @@ export default function AIInterview() {
   };
 
   const handleCancelAudio = () => {
+    // 🔥 FIX: Clean up memory leak
+    if (stagedAudioUrl) URL.revokeObjectURL(stagedAudioUrl); 
     setStagedAudioBlob(null);
     setStagedAudioUrl(null);
   };
@@ -76,13 +77,13 @@ export default function AIInterview() {
 
     const blobToSend = stagedAudioBlob;
     setStagedAudioBlob(null);
-    setStagedAudioUrl(null);
+    setStagedAudioUrl(null); // Keep URL alive in chat history
 
     setIsProcessing(true);
-    const aiResult = await sendAudioToAI(blobToSend, sessionId);
+    const aiResult = await sendAudioToAI(blobToSend, sessionId, selectedLang); 
     setIsProcessing(false);
 
-    if (aiResult?.audioUrl) {
+    if (aiResult?.audioUrl || aiResult?.text) {
       setMessages((prev) => [
         ...prev,
         { sender: "ai", text: aiResult.text, audioUrl: aiResult.audioUrl },
@@ -110,18 +111,15 @@ export default function AIInterview() {
       const isPass = finalScore >= 70;
 
       if (userId) {
-        await fetch(`${API_BASE_URL}/api/user/update`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            clerk_id: userId,
-            user_name: user?.fullName || "Worker",
-            skill_name: selectedSkill,
-            score: finalScore,
-            result: isPass ? "PASS" : "FAIL",
-            state: userLocation,
-            badges: isPass ? ["AI Verified", "Safety Cleared"] : ["Beginner"],
-          }),
+        // 🔥 FIX: Using the abstracted API call instead of raw fetch
+        await updateUserProfile({
+          clerk_id: userId,
+          user_name: user?.fullName || "Worker",
+          skill_name: selectedSkill,
+          score: finalScore,
+          result: isPass ? "PASS" : "FAIL",
+          state: userLocation,
+          badges: isPass ? ["AI Verified", "Safety Cleared"] : ["Beginner"],
         });
       }
 
@@ -163,34 +161,42 @@ export default function AIInterview() {
             key={i}
             className={`flex ${msg.sender === "user" ? "justify-end" : ""}`}
           >
-            <div className="p-4 rounded-xl bg-slate-800 max-w-[70%]">
-              {msg.text && <p>{msg.text}</p>}
-              {msg.audioUrl && <audio src={msg.audioUrl} controls />}
+            <div className={`p-4 rounded-xl max-w-[70%] ${msg.sender === "user" ? "bg-blue-600" : "bg-slate-800"}`}>
+              {msg.text && <p className="mb-2">{msg.text}</p>}
+              {msg.audioUrl && <audio src={msg.audioUrl} controls autoPlay={msg.sender === 'ai'} className={msg.sender === 'user' ? 'invert brightness-90' : ''} />}
             </div>
           </div>
         ))}
 
-        {isProcessing && <p>Processing...</p>}
+        {isProcessing && (
+          <div className="flex items-center gap-2 text-blue-400">
+            <Loader2 className="animate-spin" size={16} />
+            <span className="text-sm">Processing...</span>
+          </div>
+        )}
         <div ref={chatEndRef} />
       </div>
 
       {/* FOOTER */}
       <div className="p-4 border-t border-slate-700 flex justify-center">
         {stagedAudioUrl ? (
-          <div className="flex gap-3">
-            <button onClick={handleCancelAudio}>
-              <Trash2 />
+          <div className="flex gap-3 items-center bg-slate-800 p-2 rounded-xl">
+            <button onClick={handleCancelAudio} className="p-2 text-red-400 hover:bg-slate-700 rounded-lg">
+              <Trash2 size={20} />
             </button>
 
-            <audio src={stagedAudioUrl} controls />
+            <audio src={stagedAudioUrl} controls className="h-10" />
 
-            <button onClick={handleSendAudio}>
-              <Send />
+            <button onClick={handleSendAudio} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500">
+              <Send size={20} />
             </button>
           </div>
         ) : (
-          <button onClick={handleRecordToggle}>
-            {isRecording ? <Square /> : <Mic />}
+          <button 
+            onClick={handleRecordToggle}
+            className={`p-4 rounded-full ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-blue-600'}`}
+          >
+            {isRecording ? <Square size={24} /> : <Mic size={24} />}
           </button>
         )}
       </div>
